@@ -2,36 +2,40 @@
 pragma solidity ^0.7.0;
 
 import "./Owner.sol";
-import "./Item.sol";
+import "./ItemCustomer.sol";
+import "./ItemDealer.sol";
 
-contract Transaction is Owner, Item{
+contract Transaction is Owner, ItemCustomer, ItemDealer{
 
     constructor(){ }
     
-    function sellItem(string memory _itemName, uint _quantity) payable external checkCustomerAddress(ownerAddress, msg.sender) 
-        checkItemName(_itemName) 
-        checkItemStock(_itemName, _quantity) 
-        checkItemPrice(_itemName, _quantity) {
+    function sellCustomerItem(string memory _itemName, uint _quantity) payable external checkCustomerAddress(ownerAddress, msg.sender) 
+        checkItemCustomerName(_itemName) 
+        checkItemCustomerStock(_itemName, _quantity) 
+        checkItemCustomerPrice(_itemName, _quantity) {
 
-        uint totalPrice = itemPrice[_itemName] * _quantity;
+        uint totalPrice = itemCustomerPrice[_itemName] * _quantity;
         ownerAddress.transfer(totalPrice);
 
-        itemStock[_itemName] -= _quantity;
+        itemCustomerStock[_itemName] -= _quantity;
 
-        emit recordTransaction(msg.sender, totalPrice);
+        emit recordCustomerTransaction(msg.sender, totalPrice);
     }
 
-        function BuyItem(string memory _itemName, uint _quantity) payable external checkDealerAddress(ownerAddress, msg.sender) 
-        checkItemName(_itemName) 
-        checkItemPrice(_itemName, _quantity) {
+    function sellDealerItem(string memory _itemName, uint _quantity) payable external checkDealerAddress(ownerAddress, msg.sender) 
+        checkItemDealerName(_itemName)
+        checkItemDealerStock(_itemName, _quantity)  
+        checkItemDealerPrice(_itemName, _quantity)
+        checkItemDealerQuantity(_quantity) {
 
-        uint totalPrice = itemPrice[_itemName] * _quantity;
+        uint totalPrice = itemDealerPrice[_itemName] * _quantity;
         ownerAddress.transfer(totalPrice);
 
-        itemStock[_itemName] += _quantity;
+        itemDealerStock[_itemName] -= _quantity;
 
-        emit recordTransaction(msg.sender, totalPrice);
+        emit recordDealerTransaction(msg.sender, totalPrice);
     }
 
-    event recordTransaction(address _customerAddress, uint _value);
+    event recordCustomerTransaction(address _customerAddress, uint _value);
+    event recordDealerTransaction(address _dealerAddress, uint _value);
 }
