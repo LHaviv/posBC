@@ -2,9 +2,21 @@
 pragma solidity ^0.7.0;
 
 contract Owner {
-    address payable public ownerAddress;
+    address payable public owner;
 
     constructor(){
-        ownerAddress = msg.sender;
+        owner = msg.sender;
     }
+
+    modifier isOwner {
+        require(owner == msg.sender, "You are not owner");
+        _;
+    }
+
+    modifier isNotOwner {
+        require(owner != msg.sender, "You are owner");
+        _;
+    }
+
+    
 }
