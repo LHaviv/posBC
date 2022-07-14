@@ -2,32 +2,37 @@
 pragma solidity ^0.7.0;
 pragma experimental ABIEncoderV2;
 
-import "./Owner.sol";
-import "./Customer.sol";
-import "./Dealer.sol";
+import "./Ownable.sol";
 import "./Utilities.sol";
 
-contract Transaction is Owner, Customer, Dealer, Utilities{
+contract Transaction is Ownable, Utilities{
+
+    event SmartContractSet(address indexed oldOwner, address indexed newOwner);
+    event payItem(address customer, uint amount);
+
+    uint totalAmount;
 
     struct Item {
         string name;
         uint stock;
         uint price;
+        address customer; 
     }
 
     Item[] public items;
 
     constructor(){
-        items.push(Item({ name: "Tea",stock: 5, price : 1 ether }));
-        items.push(Item({ name: "Coffee",stock: 10, price : 2 ether }));
+        items.push(Item({ name: "Tea",stock: 5, price : 1 ether, customer: address(0)}));
+        items.push(Item({ name: "Coffee",stock: 10, price : 2 ether, customer: address(0) }));
      }
 
     function addItem(string memory _name, uint _stock, uint _price ) external isOwner returns(string memory) {
-        if(canAddNew(_name)){
+        if(!itemExist(_name)){
             Item memory newItem = Item({
                 name : _name,
                 stock: _stock,
-                price : _price
+                price : _price,
+                customer: address(0)
             });
             items.push(newItem);
             return string(abi.encodePacked(_name, 'success.'));
@@ -35,13 +40,39 @@ contract Transaction is Owner, Customer, Dealer, Utilities{
         return string(abi.encodePacked(_name, 'already exist.'));
     }
 
-    function canAddNew(string memory _name) private view returns (bool) {
-        for(uint i = 0; i < items.length; i++){          
-            if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name))) {
-                return false;
+    function updateItem(string memory _name, uint _stock, uint _price ) external isOwner returns(string memory) {
+        bool success = false;
+        if(itemExist(_name)) {
+            for(uint i = 0; i < items.length; i++){
+                if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name))&& items[i].customer == address(0)){
+                    items[i].price = _price;
+                    items[i].stock = _stock;
+                    success = true;
+                }
+            }
+            if(success){
+                return string(abi.encodePacked(_name, ' already updated.'));
             }
         }
-        return true;
+        return string(abi.encodePacked(_name, ' does not exist.'));
+    }
+
+    function getBalance() public view isOwner returns(uint256){
+        return totalAmount;
+    }
+
+    function withdraw() public payable isOwner{
+        owner.transfer(totalAmount);
+        totalAmount= 0;
+    }
+
+    function itemExist(string memory _name) private view returns (bool) {
+        for(uint i = 0; i < items.length; i++){
+            if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     function checkAllItem() public view isOwner returns(Item[] memory){
@@ -49,48 +80,48 @@ contract Transaction is Owner, Customer, Dealer, Utilities{
     }
 
 
-    function checkItem(string memory _name) public view returns(string memory){
-        string memory result = "Item not available.";
+    function checkAnItem(string memory _name) public view returns(string memory, uint, uint){
+        string memory name = "No Name";
+        uint price = 0;
+	uint stock = 0;
+
         for(uint i = 0; i < items.length; i++){
-                if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name))) {
-                    result = string(abi.encodePacked('Name: ', items[i].name, ',Stock:  ', uint2str(items[i].stock),' Price: ', uint2str(items[i].price)));
-                }
+            if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name))) {
+                name= "_name";
+                price= items[i].price;
+                stock= items[i].stock;
             }
-        return result;
+        }
+        return (name, price, stock);
     }
-    
-    function sellCustomerItem(string memory _name, uint _quantity) payable external checkCustomerAddress(owner, msg.sender)   
-        returns (string memory) {
-        string memory result = "Name cannot be found.";
+
+    function checkPayment(string memory _name, uint _quantity) private view returns (bool) {
+        uint payment = msg.value;
         for(uint i = 0; i < items.length; i++){
-                if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name))) {
-                    uint totalPrice = items[i].price * _quantity; 
-                    owner.transfer(totalPrice);
+            if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name)) && (items[i].price * _quantity) > payment) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function sellItem(string memory _name, uint _quantity)payable external isNotOwner returns(string memory){
+        string memory result = "Failed to process.";
+        if(checkPayment(_name, _quantity)){
+            for(uint i = 0; i < items.length; i++){
+                if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name)) && items[i].stock > _quantity && items[i].customer == address(0)) {
+                    uint amount= items[i].price * _quantity;
+                    emit payItem(msg.sender, amount);
+                    items[i].customer = msg.sender;
+                    totalAmount += amount;
+
                     items[i].stock -= _quantity;
-                    emit recordCustomerTransaction(msg.sender, totalPrice);
-                    result = "Success";
+
+                    result = string(abi.encodePacked('You bought an item. Name: ', items[i].name, ', Price: ', uint2str(items[i].price)));
                 }
             }
+        }
         return result;
     }
 
-    function sellDealerItem(string memory _name, uint _quantity) payable external checkDealerAddress(owner, msg.sender) 
-        checkItemDealerQuantity(_quantity) 
-        returns (string memory) {
-        string memory result = "Name cannot be found";
-        for(uint i = 0; i < items.length; i++){
-                if(keccak256(bytes(items[i].name)) == keccak256(bytes(_name))) {
-                    uint totalPrice = items[i].price * _quantity; 
-                    owner.transfer(totalPrice);
-                    items[i].stock -= _quantity;
-                    emit recordCustomerTransaction(msg.sender, totalPrice);
-                    result = "Success";
-                }
-                
-            }
-        return result;
-    }
-
-    event recordCustomerTransaction(address _customerAddress, uint _value);
-    event recordDealerTransaction(address _dealerAddress, uint _value);
 }
